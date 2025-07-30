@@ -160,7 +160,8 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
 
     console.log(`✅ Arquivo enviado para: ${remotePath}`);
 
-    const relativePath = `/${userLogin}/${folderName}/${req.file.filename}`;
+    // Construir URL relativa para salvar no banco
+    const relativePath = `/${userLogin}/${folderName}/${fileName}`;
     console.log(`💾 Salvando no banco com path: ${relativePath}`);
 
     const [result] = await db.execute(
@@ -168,7 +169,7 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
         codigo_playlist, path_video, video, width, height, 
         bitrate, duracao, duracao_segundos, tipo, ordem, tamanho_arquivo
       ) VALUES (0, ?, ?, 1920, 1080, 2500, ?, ?, 'video', 0, ?)`,
-      [relativePath, req.file.originalname, '00:00:00', duracao, tamanho]
+      [relativePath, videoTitle, 1024 * 1024]
     );
 
     await db.execute(
@@ -223,8 +224,7 @@ router.get('/test/:userId/:folder/:filename', authMiddleware, async (req, res) =
       } else {
         res.json({
           success: false,
-          exists: false,
-          path: remotePath,
+        url: `/content${relativePath}`,
           error: 'Arquivo não encontrado no servidor'
         });
       }

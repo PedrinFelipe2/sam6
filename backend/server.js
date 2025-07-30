@@ -116,132 +116,105 @@
       const fetch = require('node-fetch');
       const isProduction = process.env.NODE_ENV === 'production';
       const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
-      const wowzaPort = 6980; // Porta da API REST do Wowza
+      const wowzaPort = 1935; // Porta do streaming Wowza
       
       let wowzaUrl;
       if (isStreamFile) {
         // Para streams HLS/DASH
         wowzaUrl = `http://${wowzaHost}:1935${requestPath}`;
       } else {
-        // Para arquivos de vídeo diretos
-        wowzaUrl = `http://${wowzaHost}:6980/v2/servers/_defaultServer_/vhosts/_defaultVHost_/applications/vod/instances/_definst_/streamfiles${requestPath}`;
+        // Para arquivos de vídeo diretos - tentar múltiplas URLs
+        const possibleUrls = [
+          `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
+          `http://${wowzaHost}:1935/vod${requestPath}`,
+          `http://${wowzaHost}:8086${requestPath}`,
+          `http://${wowzaHost}:80${requestPath}`
+        ];
+        
+        // Tentar primeira URL
+        wowzaUrl = possibleUrls[0];
       }
       
       console.log(`🔗 Redirecionando para: ${wowzaUrl}`);
       
       try {
-        // Usar autenticação correta do Wowza
-        const wowzaAuth = {
-          user: 'admin',
-          pass: 'FK38Ca2SuE6jvJXed97VMn'
-        };
-        
         let wowzaResponse = null;
         
-        // Para arquivos de vídeo, usar a API REST do Wowza
+        // Para arquivos de vídeo, tentar múltiplas URLs
         if (isVideoFile) {
-          const authHeader = Buffer.from(`${wowzaAuth.user}:${wowzaAuth.pass}`).toString('base64');
-          console.log(`🔐 Tentando autenticação Wowza API: ${wowzaAuth.user}@${wowzaHost}:6980`);
+          const possibleUrls = [
+            `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
+            `http://${wowzaHost}:1935/vod${requestPath}`,
+            `http://${wowzaHost}:8086${requestPath}`,
+            `http://${wowzaHost}:80${requestPath}`,
+            `http://${wowzaHost}:8080${requestPath}`
+          ];
           
-          wowzaResponse = await fetch(wowzaUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Basic ${authHeader}`,
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Range': req.headers.range || ''
+          for (const testUrl of possibleUrls) {
+            try {
+              console.log(`🔄 Tentando URL: ${testUrl}`);
+              wowzaResponse = await fetch(testUrl, {
+                method: req.method,
+                headers: {
+                  'Range': req.headers.range || '',
+                  'User-Agent': 'Streaming-System/1.0',
+                  'Accept': '*/*'
+                }
+              });
+              
+              if (wowzaResponse.ok) {
+                console.log(`✅ URL funcionando: ${testUrl}`);
+                break;
+              } else {
+                console.log(`❌ URL falhou (${wowzaResponse.status}): ${testUrl}`);
+                wowzaResponse = null;
+              }
+            } catch (error) {
+              console.log(`❌ Erro na URL: ${testUrl} - ${error.message}`);
+              wowzaResponse = null;
             }
-          });
-          
-          if (!wowzaResponse.ok) {
-            console.log(`❌ Falha na API REST: ${wowzaResponse.status}`);
-            
-            // Fallback: tentar acesso direto ao arquivo via HTTP
-            const directUrl = `http://${wowzaHost}:1935/vod/_definst_${requestPath}`;
-            console.log(`🔄 Tentando acesso direto: ${directUrl}`);
-            
-            wowzaResponse = await fetch(directUrl, {
+          }
+        } else {
+          // Para streams, usar porta 1935 diretamente
+          wowzaResponse = await fetch(wowzaUrl, {
               method: req.method,
               headers: {
                 'Range': req.headers.range || '',
                 'User-Agent': 'Streaming-System/1.0'
               }
             });
-          }
-        } else {
-          // Para streams, usar porta 1935 diretamente
-          wowzaResponse = await fetch(wowzaUrl, {
-            method: req.method,
-            headers: {
-              'Range': req.headers.range || '',
-              'User-Agent': 'Streaming-System/1.0'
-            }
-          });
         }
         
-        // Se ainda não funcionou, tentar URLs alternativas para vídeos
+        // Se ainda não funcionou, tentar SSH ou outras alternativas
         if (!wowzaResponse || !wowzaResponse.ok) {
-          console.log(`🔄 Tentando URLs alternativas...`);
-          const alternativeUrls = [
-            `http://${wowzaHost}:1935/vod${requestPath}`,
-            `http://${wowzaHost}:1935${requestPath}`,
-            `http://${wowzaHost}:8086/content${requestPath}`,
-            `http://${wowzaHost}:80/content${requestPath}`,
-            // Tentar servir diretamente do sistema de arquivos via SSH
-            `file://${requestPath}`
-          ];
+          console.log(`❌ Todas as URLs falharam para: ${requestPath}`);
           
-          for (const altUrl of alternativeUrls) {
-            try {
-              console.log(`🔄 Tentando URL alternativa: ${altUrl}`);
-              
-              if (altUrl.startsWith('file://')) {
-                // Tentar servir arquivo diretamente via SSH
-                const SSHManager = require('./config/SSHManager');
-                const remotePath = `/usr/local/WowzaStreamingEngine/content${requestPath}`;
-                
-                try {
-                  const fileInfo = await SSHManager.getFileInfo(1, remotePath);
-                  if (fileInfo.exists) {
-                    console.log(`✅ Arquivo encontrado via SSH: ${remotePath}`);
-                    // Redirecionar para download via SSH (implementar se necessário)
-                    return res.status(200).json({ 
-                      message: 'Arquivo encontrado no servidor',
-                      path: remotePath,
-                      redirect: `http://${wowzaHost}:1935/vod/_definst_${requestPath}`
-                    });
-                  }
-                } catch (sshError) {
-                  console.log(`❌ SSH falhou: ${sshError.message}`);
-                }
-              } else {
-                const altResponse = await fetch(altUrl, {
-                  method: req.method,
-                  headers: {
-                    'Range': req.headers.range || '',
-                    'User-Agent': 'Streaming-System/1.0'
-                  }
-                });
-                
-                if (altResponse.ok) {
-                  console.log(`✅ URL alternativa funcionou: ${altUrl}`);
-                  wowzaResponse = altResponse;
-                  break;
-                }
-              }
-            } catch (altError) {
-              console.log(`❌ URL alternativa falhou: ${altUrl}`);
+          // Tentar verificar se arquivo existe via SSH
+          try {
+            const SSHManager = require('./config/SSHManager');
+            const remotePath = `/usr/local/WowzaStreamingEngine/content${requestPath}`;
+            
+            const fileInfo = await SSHManager.getFileInfo(1, remotePath);
+            if (fileInfo.exists) {
+              console.log(`✅ Arquivo encontrado via SSH: ${remotePath}`);
+              return res.status(200).json({ 
+                message: 'Arquivo encontrado no servidor',
+                path: remotePath,
+                size: fileInfo.size,
+                info: 'Arquivo existe mas não está acessível via HTTP'
+              });
             }
+          } catch (sshError) {
+            console.log(`❌ SSH falhou: ${sshError.message}`);
           }
         }
         
         if (!wowzaResponse || !wowzaResponse.ok) {
-          console.log(`❌ Erro do Wowza: ${wowzaResponse.status} - ${wowzaResponse.statusText}`);
+          console.log(`❌ Erro do Wowza: ${wowzaResponse?.status || 'N/A'} - ${wowzaResponse?.statusText || 'Sem resposta'}`);
           
           return res.status(404).json({ 
             error: 'Vídeo não disponível no servidor de streaming',
-            details: `Status: ${wowzaResponse?.status || 'N/A'} - ${wowzaResponse?.statusText || 'Sem resposta'}`,
-            url: wowzaUrl
+            details: `Status: ${wowzaResponse?.status || 'N/A'} - ${wowzaResponse?.statusText || 'Sem resposta'}`
           });
         }
         

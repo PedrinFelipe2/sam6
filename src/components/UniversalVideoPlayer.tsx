@@ -79,6 +79,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Função para construir URL correta baseada no tipo de arquivo
   const buildVideoUrl = (src: string) => {
@@ -99,17 +100,47 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
     return src;
   };
 
+  // Função para detectar tipo de arquivo
+  const getFileType = (url: string) => {
+    const extension = url.split('.').pop()?.toLowerCase();
+    
+    switch (extension) {
+      case 'm3u8':
+        return 'hls';
+      case 'mp4':
+        return 'mp4';
+      case 'webm':
+        return 'webm';
+      case 'ogg':
+        return 'ogg';
+      case 'avi':
+      case 'mov':
+      case 'wmv':
+      case 'flv':
+      case 'mkv':
+        return 'video';
+      default:
+        return 'unknown';
+    }
+  };
+
   // Função para tentar URLs alternativas em caso de erro
   const tryAlternativeUrls = async (originalSrc: string) => {
     const alternatives = [
       originalSrc,
+      // Tentar diferentes formatos de URL
       originalSrc.replace('/content/', '/content/'),
       originalSrc.replace('http://51.222.156.223:1935/vod/_definst_', '/content'),
-      originalSrc.replace('http://51.222.156.223:1935/vod/', '/content/')
+      originalSrc.replace('http://51.222.156.223:1935/vod/', '/content/'),
+      // Tentar URL direta do Wowza
+      `http://51.222.156.223:1935/vod/_definst_${originalSrc.replace('/content', '')}`,
+      // Tentar URL do servidor de produção
+      `http://samhost.wcore.com.br:1935/vod/_definst_${originalSrc.replace('/content', '')}`
     ];
 
     for (const url of alternatives) {
       try {
+        console.log(`🔄 Testando URL alternativa: ${url}`);
         const response = await fetch(url, { method: 'HEAD' });
         if (response.ok) {
           console.log(`✅ URL alternativa funcionando: ${url}`);
@@ -141,6 +172,12 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
       setConnectionStatus('connected');
       console.log('✅ Vídeo pronto para reprodução');
       if (onReady) onReady(video);
+    };
+
+    const handleLoadedData = () => {
+      setIsLoading(false);
+      setConnectionStatus('connected');
+      console.log('✅ Dados do vídeo carregados');
     };
 
     const handlePlay = () => {
@@ -178,20 +215,23 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
       
       console.error('❌ Erro no vídeo:', target.error);
       
-      // Tentar URLs alternativas apenas uma vez
-      if (src && !target.dataset.retried) {
-        console.log('🔄 Tentando URLs alternativas...');
-        target.dataset.retried = 'true';
+      // Tentar URLs alternativas apenas se não tentou ainda
+      if (src && retryCount < 3) {
+        console.log(`🔄 Tentativa ${retryCount + 1} de 3 - Tentando URLs alternativas...`);
+        setRetryCount(prev => prev + 1);
         
         const alternativeUrl = await tryAlternativeUrls(src);
         if (alternativeUrl !== src) {
           console.log(`🔄 Tentando URL alternativa: ${alternativeUrl}`);
           target.src = alternativeUrl;
+          target.load();
           return;
         }
       }
       
-      const errorMsg = `Erro ao carregar vídeo: ${target.error?.message || 'Arquivo não encontrado'}`;
+      const errorMsg = target.error ? 
+        `Erro ${target.error.code}: ${target.error.message}` : 
+        'Erro ao carregar vídeo';
       setError(errorMsg);
       if (onError) onError(e);
     };
@@ -205,9 +245,17 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
       setConnectionStatus('connected');
     };
 
+    const handleProgress = () => {
+      // Verificar se há dados em buffer
+      if (video.buffered.length > 0) {
+        setConnectionStatus('connected');
+      }
+    };
+
     // Adicionar event listeners
     video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
@@ -217,15 +265,19 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
     video.addEventListener('error', handleError);
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('playing', handlePlaying);
+    video.addEventListener('progress', handleProgress);
 
     // Configurar propriedades iniciais
     video.muted = muted;
     video.volume = 1;
     video.controls = false; // Usar controles customizados
+    video.preload = 'metadata';
+    video.crossOrigin = 'anonymous';
 
     return () => {
       video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
@@ -235,8 +287,9 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
       video.removeEventListener('error', handleError);
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('playing', handlePlaying);
+      video.removeEventListener('progress', handleProgress);
     };
-  }, [muted, onReady, onPlay, onPause, onEnded, onError]);
+  }, [muted, onReady, onPlay, onPause, onEnded, onError, src, retryCount]);
 
   // Configurar fonte de vídeo
   useEffect(() => {
@@ -244,7 +297,16 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
     if (!video || !src) return;
 
     const videoUrl = buildVideoUrl(src);
-    console.log('🎥 Carregando vídeo:', { original: src, processed: videoUrl });
+    const fileType = getFileType(videoUrl);
+    
+    console.log('🎥 Configurando vídeo:', { 
+      original: src, 
+      processed: videoUrl, 
+      type: fileType 
+    });
+
+    // Reset retry count when source changes
+    setRetryCount(0);
 
     // Limpar HLS anterior se existir
     if (hlsRef.current) {
@@ -252,7 +314,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
       hlsRef.current = null;
     }
 
-    if (videoUrl.includes('.m3u8')) {
+    if (fileType === 'hls') {
       // Stream HLS
       if (Hls.isSupported()) {
         console.log('🔄 Usando HLS.js para reprodução');
@@ -264,6 +326,10 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
           maxMaxBufferLength: isLive ? 30 : 120,
           liveSyncDurationCount: isLive ? 3 : 5,
           liveMaxLatencyDurationCount: isLive ? 5 : 10,
+          debug: false,
+          xhrSetup: (xhr, url) => {
+            xhr.withCredentials = false;
+          }
         });
 
         hls.loadSource(videoUrl);
@@ -296,11 +362,48 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
         setError('HLS não suportado neste navegador');
       }
     } else {
-      // Vídeo regular
-      console.log('📹 Carregando vídeo regular (MP4/etc)');
-      video.src = videoUrl;
+      // Vídeo regular (MP4, WebM, etc.)
+      console.log(`📹 Carregando vídeo ${fileType.toUpperCase()}`);
+      
+      // Configurar múltiplas fontes para melhor compatibilidade
+      video.innerHTML = '';
+      
+      // Adicionar fonte principal
+      const source = document.createElement('source');
+      source.src = videoUrl;
+      
+      // Definir tipo MIME correto
+      switch (fileType) {
+        case 'mp4':
+          source.type = 'video/mp4';
+          break;
+        case 'webm':
+          source.type = 'video/webm';
+          break;
+        case 'ogg':
+          source.type = 'video/ogg';
+          break;
+        default:
+          source.type = 'video/mp4'; // Fallback
+      }
+      
+      video.appendChild(source);
+      
+      // Adicionar fontes alternativas para MP4
+      if (fileType === 'mp4' || fileType === 'video') {
+        const alternativeSource = document.createElement('source');
+        alternativeSource.src = videoUrl;
+        alternativeSource.type = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"';
+        video.appendChild(alternativeSource);
+      }
+      
+      video.load();
+      
       if (autoplay) {
-        video.play().catch(console.error);
+        video.play().catch(error => {
+          console.warn('Autoplay falhou:', error);
+          // Autoplay pode falhar por políticas do navegador
+        });
       }
     }
 
@@ -400,7 +503,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
   const handleDownload = () => {
     if (src && !isLive) {
       const link = document.createElement('a');
-      link.href = src;
+      link.href = buildVideoUrl(src);
       link.download = title || 'video';
       document.body.appendChild(link);
       link.click();
@@ -429,6 +532,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
 
     setError(null);
     setIsLoading(true);
+    setRetryCount(0);
     
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -440,6 +544,8 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
   };
 
   const formatTime = (time: number): string => {
+    if (!isFinite(time)) return '0:00';
+    
     const hours = Math.floor(time / 3600);
     const minutes = Math.floor((time % 3600) / 60);
     const seconds = Math.floor(time % 60);
@@ -480,6 +586,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
         poster={poster}
         playsInline
         preload="metadata"
+        crossOrigin="anonymous"
       />
 
       {/* Marca d'água/Logo */}
@@ -540,13 +647,21 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
             <div>
               <h3 className="text-lg font-semibold mb-2">Erro de Reprodução</h3>
               <p className="text-sm text-gray-300 mb-4">{error}</p>
-              <button
-                onClick={retry}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
-              >
-                <RotateCcw className="h-4 w-4" />
-                <span>Tentar Novamente</span>
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={retry}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Tentar Novamente</span>
+                </button>
+                {src && (
+                  <div className="text-xs text-gray-400 mt-2">
+                    <p>URL: {buildVideoUrl(src)}</p>
+                    <p>Tentativas: {retryCount}/3</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
