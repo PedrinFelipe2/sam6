@@ -100,6 +100,32 @@ router.get('/obs-config', authMiddleware, async (req, res) => {
   }
 });
 
+// Rota para servir vídeos via link externo
+router.get('/video-external/:userLogin/:folder/:filename', authMiddleware, async (req, res) => {
+    try {
+        const { userLogin, folder, filename } = req.params;
+        const userId = req.user.id;
+        
+        // Verificar se o usuário tem acesso ao vídeo
+        const userEmail = req.user.email ? req.user.email.split('@')[0] : `user_${userId}`;
+        
+        if (userLogin !== userEmail) {
+            return res.status(403).json({ error: 'Acesso negado' });
+        }
+        
+        // Construir URL externa do Wowza
+        const isProduction = process.env.NODE_ENV === 'production';
+        const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
+        const externalUrl = `http://${wowzaHost}:6980/content/${userLogin}/${folder}/${filename}`;
+        
+        // Redirecionar para URL externa
+        res.redirect(externalUrl);
+    } catch (error) {
+        console.error('Erro ao gerar link externo:', error);
+        res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+});
+
 // --- ROTA GET /obs-status - Status do stream OBS ---
 router.get('/obs-status', authMiddleware, async (req, res) => {
   try {
