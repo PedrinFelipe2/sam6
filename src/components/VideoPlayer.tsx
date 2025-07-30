@@ -61,8 +61,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ playlistVideo, onVideoEnd }) 
     
     // Para arquivos locais, usar o proxy do backend
     if (url.startsWith('/') || url.includes('content/')) {
-      const cleanPath = url.replace('/content', '').replace(/^\/+/, '');
-      return `/content/${cleanPath}`;
+      const cleanPath = url.startsWith('/content') ? url : `/content${url}`;
+      return cleanPath;
     }
     
     // Retornar URL original se não conseguir processar

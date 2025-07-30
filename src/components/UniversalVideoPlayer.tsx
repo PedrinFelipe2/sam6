@@ -93,8 +93,8 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
     // Detectar se é um caminho local do servidor
     if (src.startsWith('/') || src.includes('content/')) {
       // Construir URL para o proxy do backend
-      const cleanPath = src.replace('/content', '').replace(/^\/+/, '');
-      return `/content/${cleanPath}`;
+      const cleanPath = src.startsWith('/content') ? src : `/content${src}`;
+      return cleanPath;
     }
     
     return src;

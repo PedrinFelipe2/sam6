@@ -119,8 +119,8 @@ function ModalVideo({
 
     // Para arquivos locais, usar o proxy do backend
     if (video.url.startsWith('/') || video.url.includes('content/')) {
-      const cleanPath = video.url.replace('/content', '').replace(/^\/+/, '');
-      return `/content/${cleanPath}`;
+      const cleanPath = video.url.startsWith('/content') ? video.url : `/content${video.url}`;
+      return cleanPath;
     }
 
     // Retornar URL original se não conseguir processar

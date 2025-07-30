@@ -161,15 +161,18 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
     console.log(`✅ Arquivo enviado para: ${remotePath}`);
 
     // Construir URL relativa para salvar no banco
-    const relativePath = `/${userLogin}/${folderName}/${fileName}`;
+    const relativePath = `/${userLogin}/${folderName}/${req.file.filename}`;
     console.log(`💾 Salvando no banco com path: ${relativePath}`);
+
+    // Nome do vídeo para salvar no banco
+    const videoTitle = req.file.originalname;
 
     const [result] = await db.execute(
       `INSERT INTO playlists_videos (
         codigo_playlist, path_video, video, width, height, 
         bitrate, duracao, duracao_segundos, tipo, ordem, tamanho_arquivo
       ) VALUES (0, ?, ?, 1920, 1080, 2500, ?, ?, 'video', 0, ?)`,
-      [relativePath, videoTitle, 1024 * 1024]
+      [relativePath, videoTitle, formatDuration(duracao), duracao, tamanho]
     );
 
     await db.execute(
@@ -181,7 +184,7 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
 
     res.status(201).json({
       id: result.insertId,
-      nome: req.file.originalname,
+      nome: videoTitle,
       url: `/content${relativePath}`,
       duracao,
       tamanho
@@ -194,6 +197,18 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
     res.status(500).json({ error: 'Erro no upload do vídeo', details: err.message });
   }
 });
+
+// Função auxiliar para formatar duração
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  
+  if (h > 0) {
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
 // Rota para testar acesso a vídeos
 router.get('/test/:userId/:folder/:filename', authMiddleware, async (req, res) => {
