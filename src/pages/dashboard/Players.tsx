@@ -89,13 +89,13 @@ const Players: React.FC = () => {
       type: 'iframe',
       features: ['Fácil Incorporação', 'Responsivo', 'Seguro', 'Cross-domain'],
       code: `<iframe 
-  src="http://samhost.wcore.com.br/player/iframe?stream=${userLogin}_live" 
+  src="http://samhost.wcore.com.br:6980/player/iframe?stream=${userLogin}_live" 
   width="640" 
   height="360" 
   frameborder="0" 
   allowfullscreen>
 </iframe>`,
-      previewUrl: `http://samhost.wcore.com.br/player/iframe?stream=${userLogin}_live`,
+      previewUrl: `http://samhost.wcore.com.br:6980/player/iframe?stream=${userLogin}_live`,
       isActive: false
     },
     {
@@ -182,6 +182,19 @@ player.play();`,
     }
   ];
 
+  // Função para abrir vídeo em nova aba
+  const openVideoInNewTab = (videoUrl: string) => {
+    const isProduction = window.location.hostname !== 'localhost';
+    const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
+    
+    // Construir URL externa do Wowza
+    let externalUrl = videoUrl;
+    if (videoUrl.startsWith('/content')) {
+      externalUrl = `http://${wowzaHost}:6980${videoUrl}`;
+    }
+    
+    window.open(externalUrl, '_blank');
+  };
   const activatePlayer = (playerId: string) => {
     setActivePlayer(playerId);
     toast.success(`Player ${playerConfigs.find(p => p.id === playerId)?.name} ativado!`);

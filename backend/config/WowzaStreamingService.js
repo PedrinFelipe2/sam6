@@ -282,9 +282,9 @@ class WowzaStreamingService {
 
             return {
                 success: true,
-                rtmpUrl: `rtmp://${this.wowzaHost}:1935/${applicationName}`,
+                rtmpUrl: `rtmp://${this.wowzaHost}:1935/samhost`,
                 streamKey: `${userLogin}_live`,
-                hlsUrl: `http://${this.wowzaHost}:1935/${applicationName}/${userLogin}_live/playlist.m3u8`,
+                hlsUrl: `http://${this.wowzaHost}:1935/samhost/${userLogin}_live/playlist.m3u8`,
                 recordingPath: streamConfig.recordingPath,
                 config: streamConfig
             };

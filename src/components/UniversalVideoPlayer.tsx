@@ -101,6 +101,15 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
       return cleanPath;
     }
     
+    // Para arquivos de vídeo diretos, criar URL externa para Wowza
+    if (src.includes('.mp4') || src.includes('.avi') || src.includes('.mov')) {
+      const isProduction = window.location.hostname !== 'localhost';
+      const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
+      
+      // Tentar URL direta do Wowza na porta 6980
+      return `http://${wowzaHost}:6980/content${src.startsWith('/') ? src : `/${src}`}`;
+    }
+    
     return src;
   };
 
@@ -519,12 +528,9 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
 
   const handleDownload = () => {
     if (src && !isLive) {
-      const link = document.createElement('a');
-      link.href = buildVideoUrl(src);
-      link.download = title || 'video';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Abrir vídeo em nova aba para download/visualização externa
+      const videoUrl = buildVideoUrl(src);
+      window.open(videoUrl, '_blank');
     }
   };
 

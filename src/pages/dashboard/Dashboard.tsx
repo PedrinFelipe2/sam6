@@ -47,6 +47,21 @@ const Dashboard: React.FC = () => {
   const [isPlayingPlaylist, setIsPlayingPlaylist] = useState(false);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
+  // Função para abrir vídeo em nova aba
+  const openVideoInNewTab = (video: PlaylistVideo) => {
+    const isProduction = window.location.hostname !== 'localhost';
+    const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
+    
+    if (video.videos.url) {
+      let externalUrl = video.videos.url;
+      if (video.videos.url.startsWith('/content')) {
+        externalUrl = `http://${wowzaHost}:6980${video.videos.url}`;
+      } else if (!video.videos.url.startsWith('http')) {
+        externalUrl = `http://${wowzaHost}:6980/content/${video.videos.url}`;
+      }
+      window.open(externalUrl, '_blank');
+    }
+  };
   useEffect(() => {
     loadPlaylists();
     checkOBSStatus();

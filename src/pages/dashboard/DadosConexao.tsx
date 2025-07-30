@@ -151,7 +151,7 @@ const DadosConexao: React.FC = () => {
   // Dados do servidor FMS/RTMP real
   const fmsData = {
     servidor: user?.codigo_servidor ? `servidor-${user.codigo_servidor}.wcore.com.br` : 'samhost.wcore.com.br',
-    porta: '1935',
+    porta: '1935', // Porta RTMP correta
     aplicacao: 'samhost',
     rtmpUrl: user?.codigo_servidor ? 
       `rtmp://servidor-${user.codigo_servidor}.wcore.com.br:1935/samhost` : 
