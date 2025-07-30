@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Play, Copy, Eye, Settings, Monitor, Smartphone, Globe, Code, ExternalLink, X, Maximize, Minimize } from 'lucide-react';
+import { ChevronLeft, Play, Copy, Eye, Settings, Monitor, Smartphone, Globe, Code, ExternalLink, X, Maximize, Minimize, CheckCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';

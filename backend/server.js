@@ -119,7 +119,7 @@
       const fetch = require('node-fetch');
       const isProduction = process.env.NODE_ENV === 'production';
       const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
-      const wowzaPort = isProduction ? 1935 : 8086; // Porta do streaming Wowza
+      const wowzaPort = isProduction ? 1935 : 8080; // Porta HTTP do Wowza
       
       let wowzaUrl;
       if (isStreamFile) {
@@ -129,11 +129,11 @@
         // Para arquivos de vídeo diretos - tentar múltiplas URLs
         const possibleUrls = [
           `http://${wowzaHost}:${wowzaPort}/content${requestPath}`,
-          `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
           `http://${wowzaHost}:8086${requestPath}`,
           `http://${wowzaHost}:8080${requestPath}`,
-          `http://${wowzaHost}:80${requestPath}`,
-          `http://${wowzaHost}:1935/vod${requestPath}`
+          `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
+          `http://${wowzaHost}:1935/vod${requestPath}`,
+          `http://${wowzaHost}:80${requestPath}`
         ];
         
         // Tentar primeira URL
@@ -149,10 +149,10 @@
         if (isVideoFile) {
           const possibleUrls = [
             `http://${wowzaHost}:${wowzaPort}/content${requestPath}`,
-            `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
             `http://${wowzaHost}:8086${requestPath}`,
             `http://${wowzaHost}:80${requestPath}`,
             `http://${wowzaHost}:8080${requestPath}`,
+            `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
             `http://${wowzaHost}:1935/vod${requestPath}`
           ];
           
@@ -165,7 +165,8 @@
                   'Range': req.headers.range || '',
                   'User-Agent': 'Streaming-System/1.0',
                   'Accept': '*/*'
-                }
+                },
+                timeout: 5000 // 5 segundos timeout
               });
               
               if (wowzaResponse.ok) {
@@ -187,7 +188,8 @@
               headers: {
                 'Range': req.headers.range || '',
                 'User-Agent': 'Streaming-System/1.0'
-              }
+              },
+              timeout: 5000
             });
         }
         
@@ -195,71 +197,12 @@
         if (!wowzaResponse || !wowzaResponse.ok) {
           console.log(`❌ Todas as URLs falharam para: ${requestPath}`);
           
-          // Tentar verificar se arquivo existe via SSH
-          try {
-            const SSHManager = require('./config/SSHManager');
-            const remotePath = `/usr/local/WowzaStreamingEngine/content${requestPath}`;
-            
-            const fileInfo = await SSHManager.getFileInfo(1, remotePath);
-            if (fileInfo.exists) {
-              console.log(`✅ Arquivo encontrado via SSH: ${remotePath}`);
-              
-              // Tentar servir arquivo via HTTP direto do servidor
-              const directUrl = `http://${wowzaHost}:8080/content${requestPath}`;
-              console.log(`🔄 Tentando URL direta: ${directUrl}`);
-              
-              try {
-                const directResponse = await fetch(directUrl, {
-                  method: req.method,
-                  headers: {
-                    'Range': req.headers.range || '',
-                    'User-Agent': 'Streaming-System/1.0'
-                  }
-                });
-                
-                if (directResponse.ok) {
-                  console.log(`✅ URL direta funcionando: ${directUrl}`);
-                  wowzaResponse = directResponse;
-                } else {
-                  console.log(`❌ URL direta falhou: ${directUrl}`);
-                }
-              } catch (directError) {
-                console.log(`❌ Erro na URL direta: ${directError.message}`);
-              }
-              
-              if (!wowzaResponse || !wowzaResponse.ok) {
-                return res.status(200).json({ 
-                  message: 'Arquivo encontrado no servidor',
-                  path: remotePath,
-                  size: fileInfo.size,
-                  info: 'Arquivo existe mas não está acessível via HTTP',
-                  directUrl: directUrl
-                });
-              }
-            } else {
-              console.log(`❌ Arquivo não encontrado via SSH: ${remotePath}`);
-              return res.status(404).json({ 
-                message: 'Arquivo encontrado no servidor',
-                path: remotePath,
-                size: fileInfo.size,
-                info: 'Arquivo existe mas não está acessível via HTTP'
-              });
-            }
-          } catch (sshError) {
-            console.log(`❌ SSH falhou: ${sshError.message}`);
-          }
-        }
-        
-        if (!wowzaResponse || !wowzaResponse.ok) {
-          console.log(`❌ Erro do Wowza: ${wowzaResponse?.status || 'N/A'} - ${wowzaResponse?.statusText || 'Sem resposta'}`);
-          
           return res.status(404).json({ 
-            error: 'Vídeo não disponível no servidor de streaming',
-            details: `Status: ${wowzaResponse?.status || 'N/A'} - ${wowzaResponse?.statusText || 'Sem resposta'}`
+            error: 'Vídeo não encontrado',
+            details: 'O arquivo não foi encontrado no servidor de streaming',
             requestPath: requestPath,
             testedUrls: isVideoFile ? [
               `http://${wowzaHost}:${wowzaPort}/content${requestPath}`,
-              `http://${wowzaHost}:1935/vod/_definst_${requestPath}`,
               `http://${wowzaHost}:8086${requestPath}`,
               `http://${wowzaHost}:8080${requestPath}`
             ] : [wowzaUrl]

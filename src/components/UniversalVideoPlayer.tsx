@@ -91,6 +91,10 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
     }
     
     // Detectar se é um caminho local do servidor
+    if (src.startsWith('/content')) {
+      return src;
+    }
+    
     if (src.startsWith('/') || src.includes('content/')) {
       // Construir URL para o proxy do backend
       const cleanPath = src.startsWith('/content') ? src : `/content${src}`;
@@ -223,8 +227,14 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
         const alternativeUrl = await tryAlternativeUrls(src);
         if (alternativeUrl !== src) {
           console.log(`🔄 Tentando URL alternativa: ${alternativeUrl}`);
-          target.src = alternativeUrl;
-          target.load();
+          // Recriar elemento de vídeo para forçar reload
+          const newVideo = document.createElement('video');
+          newVideo.className = target.className;
+          newVideo.controls = target.controls;
+          newVideo.autoplay = target.autoplay;
+          newVideo.muted = target.muted;
+          newVideo.src = alternativeUrl;
+          target.parentNode?.replaceChild(newVideo, target);
           return;
         }
       }
@@ -307,6 +317,8 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
 
     // Reset retry count when source changes
     setRetryCount(0);
+    setError(null);
+    setIsLoading(true);
 
     // Limpar HLS anterior se existir
     if (hlsRef.current) {
@@ -329,6 +341,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
           debug: false,
           xhrSetup: (xhr, url) => {
             xhr.withCredentials = false;
+            xhr.timeout = 10000; // 10 segundos timeout
           }
         });
 
@@ -337,6 +350,8 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           console.log('✅ Manifest HLS carregado com sucesso');
+          setIsLoading(false);
+          setConnectionStatus('connected');
           if (autoplay) {
             video.play().catch(console.error);
           }
@@ -345,6 +360,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
         hls.on(Hls.Events.ERROR, (event, data) => {
           console.error('HLS Error:', data);
           if (data.fatal) {
+            setIsLoading(false);
             setError(`Erro fatal no stream HLS: ${data.details || 'Erro desconhecido'}`);
             setConnectionStatus('disconnected');
           }
@@ -360,6 +376,7 @@ const UniversalVideoPlayer: React.FC<UniversalVideoPlayerProps> = ({
         }
       } else {
         setError('HLS não suportado neste navegador');
+        setIsLoading(false);
       }
     } else {
       // Vídeo regular (MP4, WebM, etc.)
